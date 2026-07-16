@@ -5,7 +5,7 @@ import { Loader2, Sparkles, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { GenerateRequestSchema, type GenerateRequest } from "../../../shared/schemas";
+import { GenerateRequestSchema, type GenerateRequest } from "@/types/schemas";
 import type { LoadingPhase } from "../types";
 
 interface NotesFormProps {

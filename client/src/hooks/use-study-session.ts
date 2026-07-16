@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import type { StudyMaterial, Flashcard, QuizOption } from "../../../shared/schemas";
+import type { StudyMaterial, Flashcard, QuizOption } from "@/types/schemas";
 import type { QuizAttempt } from "../types";
 
 /** Fisher-Yates shuffle (immutable). */

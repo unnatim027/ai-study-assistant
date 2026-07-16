@@ -1,14 +1,13 @@
 import { useState, useCallback, useRef } from "react";
 import { AnimatePresence } from "framer-motion";
-import { useQueryClient } from "@tanstack/react-query";
 import { NotesForm } from "@/components/NotesForm";
 import { SessionView } from "@/components/SessionView";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useStudySession } from "@/hooks/use-study-session";
 import { generateStudyMaterial } from "@/lib/api";
-import { StudyMaterialSchema } from "../../shared/schemas";
-import type { LoadingPhase } from "../types";
+import { StudyMaterialSchema } from "@/types/schemas";
+import type { LoadingPhase } from "@/types";
 
 export default function App() {
   const [phase, setPhase] = useState<LoadingPhase>("idle");
@@ -21,7 +20,6 @@ export default function App() {
 
   const generate = useCallback(
     async (notes: string) => {
-      // Cancel any in-flight request
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -32,15 +30,12 @@ export default function App() {
       setPhase("generating");
 
       try {
-        // 1. Call backend
         const raw = await generateStudyMaterial(notes, controller.signal);
 
-        // Guard: stale response check
         if (currentRequestId !== requestIdRef.current) return;
 
         setPhase("parsing");
 
-        // 2. Validate with Zod (frontend double-check)
         const parsed = StudyMaterialSchema.safeParse(raw);
         if (!parsed.success) {
           setError("AI returned invalid structured data.");
@@ -52,10 +47,8 @@ export default function App() {
 
         setPhase("rendering");
 
-        // 3. Load into session state
         session.loadMaterial(parsed.data);
 
-        // Brief delay for rendering animation
         await new Promise((r) => setTimeout(r, 300));
 
         if (currentRequestId !== requestIdRef.current) return;
@@ -70,7 +63,7 @@ export default function App() {
         if (err instanceof Error && "code" in err) {
           const axErr = err as { code?: string; response?: { data?: { error?: string } } };
           if (axErr.code === "ECONNABORTED") {
-            message = "Request timed out. The AI took too long — try shorter notes.";
+            message = "Request timed out. The AI took too long \u2014 try shorter notes.";
           } else if (axErr.response?.data?.error) {
             message = axErr.response.data.error;
           } else if (axErr.code === "ERR_NETWORK") {
@@ -92,7 +85,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur-sm">
         <div className="container mx-auto flex h-14 items-center justify-between px-4">
           <h1 className="text-lg font-bold tracking-tight">Study Assistant</h1>
@@ -100,12 +92,10 @@ export default function App() {
         </div>
       </header>
 
-      {/* Loading overlay */}
       <AnimatePresence>
         {phase !== "idle" && <LoadingOverlay phase={phase} />}
       </AnimatePresence>
 
-      {/* Main content */}
       <main className="container mx-auto px-4 py-8">
         {hasMaterial ? (
           <SessionView
@@ -121,9 +111,10 @@ export default function App() {
             currentQuizIndex={session.currentQuizIndex}
             quizAttempts={session.quizAttempts}
             onSubmitAnswer={session.submitQuizAnswer}
-            onNextQuiz={() =>
-              session.setCurrentQuizIndex((i) => Math.min(i + 1, session.quiz.length - 1))
-            }
+            onNextQuiz={() => {
+              const next = Math.min(session.currentQuizIndex + 1, session.quiz.length - 1);
+              session.setCurrentQuizIndex(next);
+            }}
             quizScore={session.quizScore}
             wrongQuestions={session.wrongQuestions}
             onRetryWrong={session.retryWrongOnly}

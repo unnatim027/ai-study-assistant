@@ -1,6 +1,6 @@
 /**
  * Frontend-specific types.
- * Core domain types are imported from shared/schemas.ts for Zod validation.
+ * Core domain types are in ./schemas.ts for Zod validation.
  * These types extend or complement the shared schema types.
  */
 

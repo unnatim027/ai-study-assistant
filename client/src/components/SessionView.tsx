@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { FlashcardViewer } from "@/components/FlashcardViewer";
 import { QuizSection } from "@/components/QuizSection";
 import { ScoreDisplay } from "@/components/ScoreDisplay";
-import type { StudyMaterial } from "../../../shared/schemas";
+import type { StudyMaterial } from "@/types/schemas";
 
 interface SessionViewProps {
   material: StudyMaterial;

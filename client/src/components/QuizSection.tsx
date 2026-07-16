@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { QuizOption } from "../../../shared/schemas";
+import type { QuizOption } from "@/types/schemas";
 import type { QuizAttempt } from "../types";
 
 interface QuizSectionProps {
