@@ -1,0 +1,9 @@
+{
+  "name": "study-assistant-api",
+  "type": "module",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "zod": "^3.24.2"
+  }
+}
