@@ -75,42 +75,54 @@ app.post("/api/generate", async (req, res) => {
   }
 
   try {
-    let response;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.CLIENT_ORIGIN || "http://localhost:5173",
-          "X-Title": "Study Assistant",
-        },
-        body: JSON.stringify({
-          model: "nvidia/nemotron-3-nano-30b-a3b:free",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: notes },
-          ],
-          temperature: 0.7,
-          max_tokens: 4096,
-        }),
-      });
+    const models = [
+      "nvidia/nemotron-3-nano-30b-a3b:free",
+      "meta-llama/llama-3.3-70b-instruct:free",
+      "qwen/qwen3-next-80b-a3b-instruct:free",
+    ];
 
-      if (response.status === 429 && attempt < 3) {
-        const wait = attempt * 5000;
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
+    let response = null;
+    let lastError = "";
+
+    for (const model of models) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": process.env.CLIENT_ORIGIN || "*",
+              "X-Title": "Study Assistant",
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: notes },
+              ],
+              temperature: 0.7,
+              max_tokens: 4096,
+            }),
+          });
+
+          if (response.ok) break;
+          lastError = `Model ${model}: ${response.status}`;
+          if (response.status === 429 && attempt < 2) {
+            await new Promise((r) => setTimeout(r, 5000));
+          }
+        } catch (fetchErr) {
+          lastError = `Network error on ${model}: ${fetchErr.message}`;
+          await new Promise((r) => setTimeout(r, 3000));
+        }
       }
-      break;
+      if (response && response.ok) break;
     }
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error("OpenRouter error:", response.status, errorBody);
+    if (!response || !response.ok) {
+      console.error("All models failed:", lastError);
       return res.status(502).json({
-        error: response.status === 429
-          ? "AI provider is rate-limiting requests. Please wait and try again."
-          : "Failed to generate study material from AI provider.",
+        error: "AI provider is busy. Please wait a minute and try again.",
       });
     }
 

@@ -7,14 +7,9 @@ import { z } from "zod";
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// ---------------------------------------------------------------------------
-// Middleware
-// ---------------------------------------------------------------------------
-
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" }));
 app.use(express.json({ limit: "10kb" }));
 
-// Rate-limit: 20 requests per minute per IP
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
@@ -23,10 +18,6 @@ const limiter = rateLimit({
   message: { error: "Too many requests. Please try again later." },
 });
 app.use("/api", limiter);
-
-// ---------------------------------------------------------------------------
-// Validation schemas (mirrors shared/schemas.ts)
-// ---------------------------------------------------------------------------
 
 const FlashcardSchema = z.object({
   question: z.string().min(1),
@@ -50,10 +41,6 @@ const StudyMaterialSchema = z.object({
 const GenerateRequestSchema = z.object({
   notes: z.string().min(10).max(10000),
 });
-
-// ---------------------------------------------------------------------------
-// Prompt engineering
-// ---------------------------------------------------------------------------
 
 const SYSTEM_PROMPT = `You are a study assistant. Given the user's study notes, generate structured learning material.
 
@@ -84,12 +71,13 @@ Rules:
 - Do NOT include any text before or after the JSON object.
 - Return ONLY the raw JSON object.`;
 
-// ---------------------------------------------------------------------------
-// Route: POST /api/generate
-// ---------------------------------------------------------------------------
+const FREE_MODELS = [
+  "nvidia/nemotron-3-nano-30b-a3b:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+];
 
 app.post("/api/generate", async (req, res) => {
-  // 1. Validate request body
   const parsed = GenerateRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({
@@ -100,52 +88,54 @@ app.post("/api/generate", async (req, res) => {
 
   const { notes } = parsed.data;
 
-  // 2. Check for API key
   if (!process.env.OPENROUTER_API_KEY) {
     console.error("OPENROUTER_API_KEY is not set");
     return res.status(500).json({ error: "Server configuration error" });
   }
 
   try {
-    // 3. Call OpenRouter with retry on 429
-    let response;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.CLIENT_ORIGIN || "http://localhost:5173",
-          "X-Title": "Study Assistant",
-        },
-        body: JSON.stringify({
-          model: "nvidia/nemotron-3-nano-30b-a3b:free",
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: notes },
-          ],
-          temperature: 0.7,
-          max_tokens: 4096,
-        }),
-      });
+    let response = null;
+    let lastError = "";
 
-      if (response.status === 429 && attempt < 3) {
-        const wait = attempt * 5000;
-        console.log(`Rate limited, retrying in ${wait / 1000}s (attempt ${attempt}/3)...`);
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
+    for (const model of FREE_MODELS) {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": process.env.CLIENT_ORIGIN || "http://localhost:5173",
+              "X-Title": "Study Assistant",
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                { role: "user", content: notes },
+              ],
+              temperature: 0.7,
+              max_tokens: 4096,
+            }),
+          });
+
+          if (response.ok) break;
+          lastError = `${model}: ${response.status}`;
+          if (response.status === 429 && attempt < 2) {
+            await new Promise((r) => setTimeout(r, 5000));
+          }
+        } catch (fetchErr) {
+          lastError = `Network: ${fetchErr.message}`;
+          await new Promise((r) => setTimeout(r, 3000));
+        }
       }
-      break;
+      if (response && response.ok) break;
     }
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error("OpenRouter error:", response.status, errorBody);
-      const status = response.status === 429 ? 429 : 502;
-      return res.status(status).json({
-        error: response.status === 429
-          ? "AI provider is rate-limiting requests. Please wait a minute and try again."
-          : "Failed to generate study material from AI provider.",
+    if (!response || !response.ok) {
+      console.error("All models failed:", lastError);
+      return res.status(502).json({
+        error: "AI provider is busy. Please wait a minute and try again.",
       });
     }
 
@@ -156,32 +146,25 @@ app.post("/api/generate", async (req, res) => {
       return res.status(502).json({ error: "AI returned an empty response." });
     }
 
-    // 4. Strip markdown code fences if the LLM wraps them anyway
     let cleaned = rawContent.trim();
     if (cleaned.startsWith("```")) {
       cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
     }
 
-    // 5. Parse and validate JSON
     let material;
     try {
       material = JSON.parse(cleaned);
     } catch {
       console.error("Malformed JSON from LLM:", cleaned.slice(0, 200));
-      return res.status(422).json({
-        error: "AI returned invalid structured data.",
-      });
+      return res.status(422).json({ error: "AI returned invalid structured data." });
     }
 
     const validated = StudyMaterialSchema.safeParse(material);
     if (!validated.success) {
       console.error("Schema validation failed:", validated.error.flatten());
-      return res.status(422).json({
-        error: "AI returned invalid structured data.",
-      });
+      return res.status(422).json({ error: "AI returned invalid structured data." });
     }
 
-    // 6. Return validated material
     return res.json(validated.data);
   } catch (err) {
     console.error("Unexpected error:", err);
@@ -189,17 +172,9 @@ app.post("/api/generate", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Health check
-// ---------------------------------------------------------------------------
-
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
-
-// ---------------------------------------------------------------------------
-// Start
-// ---------------------------------------------------------------------------
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
