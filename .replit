@@ -1,0 +1,14 @@
+run = ["npm", "run", "dev"]
+entrypoint = "package.json"
+
+[nix]
+channel = "stable-24_05"
+
+[env]
+PATH = "node_modules/.bin:$PATH"
+
+[languages.javascript]
+pattern = "**/*.js"
+
+[languages.typescript]
+pattern = "**/*.ts"
