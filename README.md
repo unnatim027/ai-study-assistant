@@ -1,104 +1,267 @@
-# Study Assistant
+# 📚 Study Assistant
 
-An AI-powered study tool that transforms free-form notes into interactive flashcards and quizzes.
+Study Assistant is an AI-powered web application that transforms free-form study notes into interactive flashcards and quizzes. Instead of displaying raw AI responses, the application requests structured JSON from an LLM through OpenRouter, validates the response, and renders interactive React components for an engaging learning experience.
 
-## Architecture
+---
+
+## Features
+
+- Generate flashcards from study notes
+- Generate multiple-choice quizzes
+- Interactive flashcard navigation
+- Quiz with instant feedback and explanations
+- Retry incorrectly answered questions
+- Responsive design for desktop and mobile
+- Loading, empty, and error states
+- Robust AI response validation using Zod
+- Prevents stale AI responses using AbortController
+
+---
+
+## Tech Stack
+
+### Frontend
+
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS
+- shadcn/ui
+- Framer Motion
+- React Hook Form
+- TanStack Query
+- Zod
+
+### Backend
+
+- Node.js
+- Express
+- Axios
+- dotenv
+
+### AI
+
+- OpenRouter API
+- Google Gemini 2.5 Flash
+
+---
+
+## Project Structure
 
 ```
 study-assistant/
-├── client/          # React 19 + Vite + TypeScript frontend
+│
+├── client/
 │   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── hooks/         # Custom React hooks
-│   │   ├── lib/           # Utilities and API client
-│   │   ├── types/         # Frontend-specific types
-│   │   ├── App.tsx        # Root application
-│   │   └── main.tsx       # Entry point
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   ├── types/
+│   │   ├── App.tsx
+│   │   └── main.tsx
 │   └── ...
-├── server/          # Express backend
-│   └── src/
-│       └── index.js       # API server + OpenRouter integration
-└── shared/          # Zod schemas shared between client/server
-    └── schemas.ts
+│
+├── server/
+│   ├── src/
+│   │   └── index.js
+│   └── ...
+│
+├── shared/
+│   └── schemas.ts
+│
+└── README.md
 ```
 
-## Setup
+---
 
-### Prerequisites
-- Node.js 18+
-- An [OpenRouter API key](https://openrouter.ai/)
+## Installation
 
-### 1. Server
+### Clone the Repository
+
+```bash
+git clone <repository-url>
+cd ai-study-assistant
+```
+
+---
+
+### Backend Setup
 
 ```bash
 cd server
-cp .env.example .env       # Add your OPENROUTER_API_KEY
 npm install
-npm run dev                 # Runs on http://localhost:3001
 ```
 
-### 2. Client
+Create a `.env` file:
+
+```env
+OPENROUTER_API_KEY=your_openrouter_api_key
+PORT=3001
+CLIENT_ORIGIN=http://localhost:5173
+```
+
+Start the backend:
+
+```bash
+npm run dev
+```
+
+---
+
+### Frontend Setup
 
 ```bash
 cd client
 npm install
-npm run dev                 # Runs on http://localhost:5173
+npm run dev
 ```
 
-The Vite dev server proxies `/api` requests to the Express backend automatically.
+Frontend runs at:
 
-## Environment Variables
+```
+http://localhost:5173
+```
 
-### Server (`.env`)
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `OPENROUTER_API_KEY` | Yes | — | Your OpenRouter API key |
-| `CLIENT_ORIGIN` | No | `http://localhost:5173` | CORS allowed origin |
-| `PORT` | No | `3001` | Server port |
+Backend runs at:
 
-### Client
-No environment variables needed — the client uses the Vite proxy in development.
+```
+http://localhost:3001
+```
 
-## Prompt Engineering Strategy
+---
 
-The system prompt enforces strict JSON-only output from the LLM:
+## Application Flow
 
-1. **Explicit schema** — The prompt includes the exact JSON structure the model must return, with field descriptions and constraints.
-2. **Negative instructions** — Explicitly forbids markdown, code fences, and any surrounding text.
-3. **Validation rules** — Requires `correctAnswer` to exactly match one of the four `options`, and sets minimum counts (5-10 flashcards, 5 quiz questions).
-4. **Defensive cleaning** — Even with strict prompting, the server strips markdown fences (` ```json ... ``` `) if the LLM wraps the response anyway.
-5. **Dual validation** — Both the server and client validate the response with Zod before rendering.
+```
+User Notes
+      │
+      ▼
+React Frontend
+      │
+      ▼
+Express Backend
+      │
+      ▼
+OpenRouter API
+(Google Gemini 2.5 Flash)
+      │
+      ▼
+Structured JSON
+      │
+      ▼
+Zod Validation
+      │
+      ▼
+Interactive Flashcards & Quiz
+```
 
-## AI Usage
+---
 
-- **Model**: Google Gemini 2.5 Flash via OpenRouter
-- **Temperature**: 0.7 (balanced creativity/consistency)
-- **Max tokens**: 4096 (sufficient for structured JSON with 10 flashcards + 5 quiz questions)
-- **Frontend double-validation**: The client re-validates the response through Zod even though the server already validates, ensuring the contract is enforced at both layers.
+## Prompt Engineering
 
-## Failure Handling
+The backend sends a carefully designed system prompt that instructs the model to return **only valid JSON**.
 
-| Failure Mode | Handling |
-|---|---|
-| **Malformed JSON** | Server catches `JSON.parse` error → returns 422 with "AI returned invalid structured data" |
-| **Schema mismatch** | Zod validation catches unexpected fields/types → same 422 response |
-| **Empty response** | Server checks for missing `content` → returns 502 |
-| **Timeout** | Axios 60s timeout → client shows "Request timed out" message |
-| **Network error** | Axios catches → client shows "Network error. Is the server running?" |
-| **500 / 502 errors** | Server logs + returns structured error → client displays it |
-| **Rate limiting** | express-rate-limit: 20 req/min per IP → 429 response |
-| **Stale responses** | `AbortController` cancels in-flight requests; `requestIdRef` ensures older responses never overwrite newer ones |
-| **API key missing** | Server checks at runtime → returns 500 with "Server configuration error" |
+Expected response format:
 
-## Loading States
+```json
+{
+  "title": "",
+  "summary": "",
+  "flashcards": [
+    {
+      "question": "",
+      "answer": ""
+    }
+  ],
+  "quiz": [
+    {
+      "question": "",
+      "options": ["", "", "", ""],
+      "correctAnswer": "",
+      "explanation": ""
+    }
+  ]
+}
+```
 
-The app tracks a `LoadingPhase` through the pipeline:
+If the model wraps the response in Markdown code fences, the backend removes them before parsing.
 
-1. **Idle** — Form ready for input
-2. **Generating** — LLM API call in progress
-3. **Parsing** — Validating response structure
-4. **Rendering** — Building React components
+---
 
-## Time Spent
+## AI Integration
 
-~2 hours — architecture design, implementation, and documentation.
+The application uses **OpenRouter** with the **Google Gemini 2.5 Flash** model to generate study material.
+
+To ensure reliability:
+
+- The backend validates the AI response using Zod.
+- The frontend validates the received data again before rendering.
+- Only structured JSON is accepted.
+- Invalid responses never reach the UI.
+
+---
+
+## Error Handling
+
+The application gracefully handles:
+
+- Invalid JSON responses
+- Unexpected response schema
+- Empty AI responses
+- Network failures
+- API errors
+- Timeout errors
+- Missing API key
+- Multiple rapid requests
+
+Older requests are cancelled using **AbortController**, ensuring outdated responses cannot overwrite newer ones.
+
+---
+
+## Assignment Requirements Covered
+
+- React Hooks
+- Functional Components
+- Free-form Text Input
+- Real LLM API Integration
+- Structured JSON Parsing
+- Interactive Flashcards
+- Interactive Quiz
+- Loading State
+- Empty State
+- Error State
+- Retry Support
+- Mobile Responsive Design
+- Robust AI Failure Handling
+
+---
+
+## AI Usage Note
+
+AI tools were used to assist with brainstorming, code review, debugging, and improving implementation details. The project architecture, integration, testing, and final implementation were completed and verified manually.
+
+---
+
+## Known Limitations
+
+- Generated study material depends on the quality of the input notes.
+- AI responses may occasionally contain repetitive flashcards.
+- No authentication or cloud storage.
+- Study sessions are stored only for the current browser session.
+
+---
+
+## Future Improvements
+
+- Save study sessions
+- Export flashcards and quiz results
+- Difficulty levels
+- AI-powered progress tracking
+- Image-based study support
+- Voice-based quiz mode
+
+---
+
+## License
+
+This project was created as part of a Frontend Internship assignment and is intended for educational and evaluation purposes.
