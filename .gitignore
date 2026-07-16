@@ -6,3 +6,4 @@ dist/
 .DS_Store
 backend/
 frontend/
+api/node_modules/
