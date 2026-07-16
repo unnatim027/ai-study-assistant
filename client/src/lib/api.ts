@@ -1,10 +1,12 @@
 import axios from "axios";
 import type { StudyMaterial } from "../../../shared/schemas";
 
+const API_URL = import.meta.env.VITE_API_URL || "";
+
 /** Axios instance pointing at the Express backend. */
 const api = axios.create({
-  baseURL: "/api",
-  timeout: 60_000, // 60s for LLM calls
+  baseURL: `${API_URL}/api`,
+  timeout: 60_000,
   headers: { "Content-Type": "application/json" },
 });
 
